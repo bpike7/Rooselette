@@ -1,5 +1,14 @@
 import puppeteer from 'puppeteer';
 import tesseract from 'node-tesseract-ocr';
+import redis from './redis.js';
+import Big from 'big.js';
+
+// bottom x: 400, y: 420
+// even x: 515, y: 420
+// red  x: 650, y: 420
+// black x: 750, y: 420
+// odd x: 850, y: 420
+// top x: 950, y: 420
 
 const { BOVADA_EMAIL, BOVADA_PASSWORD } = process.env;
 
@@ -12,7 +21,7 @@ export const session = {
 }
 
 export async function login() {
-  session.browser = await puppeteer.launch({ headless: true, devtools: false });
+  session.browser = await puppeteer.launch({ headless: false, devtools: false });
   session.browser.on('targetcreated', assignTablePage);
   session.pages.tablesIndex = await session.browser.newPage();
   const { tablesIndex: page } = session.pages;
@@ -43,31 +52,53 @@ export async function openNewTablePage() {
 
 export async function screenshotAndReadHistory(num) {
   const directory = 'src/screenshots/history';
-  const heightBuffer = parseInt(num) * 31;
+  const heightBuffer = parseInt(num) * 28;
+  if (!session.pages.table) return;
   await session.pages.table.screenshot({
     path: `${directory}/${num}.png`,
-    clip: { x: 1152, y: 87 + heightBuffer, width: 17, height: 12 }
+    clip: { x: 1133, y: 79 + heightBuffer, width: 15, height: 11 }
   });
-  const read8 = (await tesseract.recognize(`${directory}/${num}.png`, { lang: "eng", oem: 1, psm: 8 })).replace('\n', '');
-  const read9 = (await tesseract.recognize(`${directory}/${num}.png`, { lang: "eng", oem: 1, psm: 9 })).replace('\n', '');
-  console.log('-------')
-  console.log(read8)
-  console.log(read9)
-  return read8;
+
+  const normal = (await tesseract.recognize(`${directory}/${num}-alt.png`, { oem: 3, psm: 8, tessedit_char_whitelist: "0123456789" })).replace('\n', '');
+  return normal;
 }
 
-export async function getAccountBalance() {
-
+export async function screenshotTableHistory(num) {
+  const heightBuffer = parseInt(num) * 28;
+  if (!session.pages.table) return;
+  return session.pages.table.screenshot({
+    type: 'jpeg',
+    quality: 100,
+    clip: { x: 1133, y: 79 + heightBuffer, width: 15, height: 11 },
+    omitBackground: true,
+  });
 }
 
-export async function placeBet(bets) {
+export async function getBalance() {
+  if (!session.pages.table) return;
+  await session.pages.table.screenshot({
+    path: './balance.jpeg',
+    type: 'jpeg',
+    quality: 100,
+    clip: { x: 95, y: 640, width: 120, height: 30 },
+    omitBackground: true,
+  });
 
+  const buffer = await session.pages.table.screenshot({
+    type: 'jpeg',
+    quality: 100,
+    clip: { x: 95, y: 640, width: 120, height: 30 },
+    omitBackground: true,
+  });
+  const balance = (await tesseract.recognize(buffer, { lang: "eng", oem: 1, psm: 7 })).replace('\n', '').replace(/,/g, '').replace('$', '');
+  return balance;
 }
+
 
 async function assignTablePage(target) {
   if (target.url().includes('reallivedealercasino')) {
     session.pages.table = await target.page();
-    await session.pages.table.setViewport({ width: 1500, height: 1000, deviceScaleFactor: 2 });
+    await session.pages.table.setViewport({ width: 1500, height: 670, deviceScaleFactor: 5 });
   }
 }
 
@@ -80,3 +111,46 @@ async function wait(ms = 500) {
     setTimeout(resolve, ms);
   });
 }
+
+const clickLocation = {
+  red: { x: 630, y: 420 },
+  black: { x: 750, y: 420 }
+};
+
+export async function betLoop({ bet, value: betValue }, balancePrevious) {
+  if (!balancePrevious) await redis.set('is_betting', true);
+  const balance = await getBalance();
+  if (!balance) return console.log('no balance');
+  if (balancePrevious && balance !== balancePrevious) {
+    const multiplesOfFiveMinusOne = Big(betValue).div(5).minus(1).toNumber();
+    for (const _ of [...Array(multiplesOfFiveMinusOne)]) {
+      await session.pages.table.mouse.click(clickLocation[bet].x, clickLocation[bet].y);
+      await wait();
+    }
+    await redis.set('is_betting', false);
+    await redis.set('has_bet', true);
+    return console.log('BET MADE');
+  }
+  await session.pages.table.mouse.click(clickLocation.red.x, clickLocation.red.y);
+
+  await wait();
+  return betLoop({ bet, value: betValue }, balance);
+}
+
+// /*
+// 0 = Orientation and script detection (OSD) only.
+// 1 = Automatic page segmentation with OSD.
+// 2 = Automatic page segmentation, but no OSD, or OCR. (not implemented)
+// 3 = Fully automatic page segmentation, but no OSD. (Default)
+// 4 = Assume a single column of text of variable sizes.
+// 5 = Assume a single uniform block of vertically aligned text.
+// 6 = Assume a single uniform block of text.
+// 7 = Treat the image as a single text line.
+// 8 = Treat the image as a single word.
+// 9 = Treat the image as a single word in a circle.
+// 10 = Treat the image as a single character.
+// 11 = Sparse text. Find as much text as possible in no particular order.
+// 12 = Sparse text with OSD.
+// 13 = Raw line. Treat the image as a single text line,
+//      bypassing hacks that are Tesseract-specific.
+// */

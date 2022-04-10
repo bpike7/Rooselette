@@ -14,15 +14,25 @@
   "dependencies": {
     "async-redis": "^2.0.0",
     "axios": "^0.26.1",
+    "big.js": "^6.1.1",
     "canvas": "^2.9.0",
     "cron": "^1.8.2",
+    "fast-average-color": "^7.1.0",
+    "fast-average-color-node": "^2.2.0",
     "get-image-colors": "^4.0.1",
+    "gm": "^1.23.1",
     "googleapis": "^95.0.0",
+    "image-average-color": "^1.0.0",
     "image-clipper": "^0.4.4",
     "node-tesseract": "^0.2.7",
     "node-tesseract-ocr": "^2.2.1",
+    "node-vibrant": "^3.2.1-alpha.1",
+    "onecolor": "^3.1.0",
     "puppeteer": "^11.0.0",
-    "screenshot-desktop": "^1.12.7"
+    "rgbaster": "^2.1.1",
+    "screenshot-desktop": "^1.12.7",
+    "sharp": "^0.30.3",
+    "tesseract.js": "^2.1.5"
   },
   "devDependencies": {
     "chai": "^4.3.6",
