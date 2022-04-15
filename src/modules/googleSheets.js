@@ -4,8 +4,9 @@ const { BULLWISE_GOOGLE_CLIENT_EMAIL, BULLWISE_GOOGLE_PRIVATE_KEY } = process.en
 const client = new google.auth.JWT(BULLWISE_GOOGLE_CLIENT_EMAIL, null, BULLWISE_GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'), ['https://www.googleapis.com/auth/spreadsheets']);
 const authCache = {};
 
-export const hubRangeMap = {
-  hub_history: 'HUB!Q3:R12'
+export const rangeMap = {
+  ledger: 'Ledger!B3:G1000',
+  balance: 'Ledger!B3:C3'
 };
 
 client.authorize((err, tokens) => {

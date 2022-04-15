@@ -1,10 +1,10 @@
 import { collectScreenshots } from './images.js';
-import redis from './modules/redis.js';
+import redis from '../src/modules/redis.js';
 import fs from 'fs';
 import tesseract from 'node-tesseract-ocr';
 import clipper from 'image-clipper';
 import canvas from 'canvas';
-import { session, login, openNewTablePage } from './modules/puppeteer.js';
+import { session, login, openNewTablePage } from '../src/modules/puppeteer.js';
 clipper.configure('canvas', canvas);
 
 const ssInterval = 500;

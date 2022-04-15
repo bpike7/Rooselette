@@ -1,7 +1,9 @@
 import puppeteer from 'puppeteer';
 import tesseract from 'node-tesseract-ocr';
+import * as Slack from './slack.js';
 import redis from './redis.js';
 import Big from 'big.js';
+import { addToLedger } from '../ledger.js';
 
 // bottom x: 400, y: 420
 // even x: 515, y: 420
@@ -50,17 +52,31 @@ export async function openNewTablePage() {
   await wait(13000);
 }
 
-export async function screenshotAndReadHistory(num) {
-  const directory = 'src/screenshots/history';
-  const heightBuffer = parseInt(num) * 28;
-  if (!session.pages.table) return;
-  await session.pages.table.screenshot({
-    path: `${directory}/${num}.png`,
-    clip: { x: 1133, y: 79 + heightBuffer, width: 15, height: 11 }
-  });
+async function assignTablePage(target) {
+  if (target.url().includes('reallivedealercasino')) {
+    session.pages.table = await target.page();
+    await session.pages.table.setViewport({ width: 1500, height: 670, deviceScaleFactor: 5 });
+  }
+}
 
-  const normal = (await tesseract.recognize(`${directory}/${num}-alt.png`, { oem: 3, psm: 8, tessedit_char_whitelist: "0123456789" })).replace('\n', '');
-  return normal;
+export async function checkForTableExpiration() {
+  console.log('CHECKING FOR EXPIRATION');
+  if (!session.pages.table) return;
+  const buffer = await session.pages.table.screenshot({
+    type: 'jpeg',
+    quality: 100,
+    omitBackground: true,
+  });
+  const textAll = (await tesseract.recognize(buffer, { lang: "eng", oem: 1, psm: 6 }));
+  if (textAll.includes('has expired')) {
+    try {
+      await session.pages.table.click('#general-error-lobby > div');
+      await wait(1000);
+      await openNewTablePage();
+    } catch (err) {
+      console.log(err);
+    }
+  }
 }
 
 export async function screenshotTableHistory(num) {
@@ -76,14 +92,6 @@ export async function screenshotTableHistory(num) {
 
 export async function getBalance() {
   if (!session.pages.table) return;
-  await session.pages.table.screenshot({
-    path: './balance.jpeg',
-    type: 'jpeg',
-    quality: 100,
-    clip: { x: 95, y: 640, width: 120, height: 30 },
-    omitBackground: true,
-  });
-
   const buffer = await session.pages.table.screenshot({
     type: 'jpeg',
     quality: 100,
@@ -95,11 +103,49 @@ export async function getBalance() {
 }
 
 
-async function assignTablePage(target) {
-  if (target.url().includes('reallivedealercasino')) {
-    session.pages.table = await target.page();
-    await session.pages.table.setViewport({ width: 1500, height: 670, deviceScaleFactor: 5 });
+
+const clickLocation = {
+  red: { x: 630, y: 420 },
+  black: { x: 800, y: 420 }
+};
+
+export async function betLoop({ bet, value: betValue }, balancePrevious) {
+  // If this is the first pass through, set is_betting true
+  if (!balancePrevious) await redis.set('is_betting', true);
+
+  // This prevents the top level cron from running workflow twice and double betting same bet
+  const placedBet = await redis.get('bet_placed');
+  if (placedBet && placedBet.bet === bet && placedBet.value === betValue) return;
+
+  const balance = await getBalance();
+
+  console.log('BALANCE: ', balance);
+
+  // If not able to get balance AFTER previously being able to, check if table session expired
+  if (!balance) return checkForTableExpiration();
+
+  // If balance has changed, assume betting window is open and one of the desired bets have already been placed
+  if (balancePrevious && balance !== balancePrevious) {
+    const multiplesOfFiveMinusOne = Big(betValue).div(5).minus(1).toNumber();
+    let index = 1;
+    for (const _ of [...Array(multiplesOfFiveMinusOne)]) {
+      console.log('CLICK: ', index + 1, { bet, value: betValue })
+      await session.pages.table.mouse.click(clickLocation[bet].x, clickLocation[bet].y);
+      await wait();
+      index++;
+    }
+    await redis.set('is_betting', false);
+    const balance_after_bet = await getBalance();
+    await redis.set('bet_placed', { ...placedBet, [bet]: betValue, balance_after_bet });
+    await Slack.notifyBet(JSON.stringify({ bet, value, balance_after_bet }));
+    await addToLedger({ bet, value: betValue }, balance_after_bet);
+    return console.log('BET MADE');
   }
+
+  // Attempt initial bet once to test if betting window is open
+  await session.pages.table.mouse.click(clickLocation[bet].x, clickLocation[bet].y);
+  await wait();
+  return betLoop({ bet, value: betValue }, balance);
 }
 
 async function getText(element) {
@@ -111,46 +157,3 @@ async function wait(ms = 500) {
     setTimeout(resolve, ms);
   });
 }
-
-const clickLocation = {
-  red: { x: 630, y: 420 },
-  black: { x: 750, y: 420 }
-};
-
-export async function betLoop({ bet, value: betValue }, balancePrevious) {
-  if (!balancePrevious) await redis.set('is_betting', true);
-  const balance = await getBalance();
-  if (!balance) return console.log('no balance');
-  if (balancePrevious && balance !== balancePrevious) {
-    const multiplesOfFiveMinusOne = Big(betValue).div(5).minus(1).toNumber();
-    for (const _ of [...Array(multiplesOfFiveMinusOne)]) {
-      await session.pages.table.mouse.click(clickLocation[bet].x, clickLocation[bet].y);
-      await wait();
-    }
-    await redis.set('is_betting', false);
-    await redis.set('has_bet', true);
-    return console.log('BET MADE');
-  }
-  await session.pages.table.mouse.click(clickLocation.red.x, clickLocation.red.y);
-
-  await wait();
-  return betLoop({ bet, value: betValue }, balance);
-}
-
-// /*
-// 0 = Orientation and script detection (OSD) only.
-// 1 = Automatic page segmentation with OSD.
-// 2 = Automatic page segmentation, but no OSD, or OCR. (not implemented)
-// 3 = Fully automatic page segmentation, but no OSD. (Default)
-// 4 = Assume a single column of text of variable sizes.
-// 5 = Assume a single uniform block of vertically aligned text.
-// 6 = Assume a single uniform block of text.
-// 7 = Treat the image as a single text line.
-// 8 = Treat the image as a single word.
-// 9 = Treat the image as a single word in a circle.
-// 10 = Treat the image as a single character.
-// 11 = Sparse text. Find as much text as possible in no particular order.
-// 12 = Sparse text with OSD.
-// 13 = Raw line. Treat the image as a single text line,
-//      bypassing hacks that are Tesseract-specific.
-// */

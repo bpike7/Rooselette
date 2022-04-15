@@ -1,22 +1,17 @@
-import redis from './modules/redis.js';
-import { getSheetData, hubRangeMap } from './modules/googleSheets.js';
-
-const { STREAK_THRESHOLD_HALF = 6, ROOSELETTE_SPREADSHEET_ID } = process.env;
-
 const numbers = {
   '1/2': {
     red_black: {
       red: [1, 3, 5, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36],
       black: [2, 4, 6, 7, 8, 10, 11, 13, 15, 17, 20, 22, 24, 26, 28, 29, 31, 33, 35]
     },
-    even_odd: {
-      even: [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36],
-      odd: [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35]
-    },
-    top_bottom: {
-      top: [19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 31, 32, 33, 34, 35, 36],
-      bottom: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
-    },
+    // even_odd: {
+    //   even: [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36],
+    //   odd: [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35]
+    // },
+    // top_bottom: {
+    //   top: [19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 31, 32, 33, 34, 35, 36],
+    //   bottom: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
+    // },
   },
   // '1/3': {
   //   small_medium_big: {
@@ -33,43 +28,45 @@ const numbers = {
 }
 
 const patterns = [
-  'A',
-  'AB',
-
-  'AAB',
-  'BAA',
+  { id: 'SINGLE', pattern: 'A' },
+  { id: 'ALTERNATING', pattern: 'AB' },
+  { id: 'THIRD_WHEEL', pattern: 'AAB' },
+  // 'BAA',
 
   // 'AAAB',
-  // 'BBBA',
-
   // 'AABB',
-  // 'BBAA',
-
   // 'AAABBB',
-  // 'BBBAAA'
 ];
 
 
 export default function (history) {
-  history.reverse();
+  history.reverse()
   const halfPoints = evalHalfpoints(history);
-  return halfPoints;
+  return [halfPoints.filter(s => !!s).sort((a, b) => a.streak < b.streak ? -1 : 1)[0]].filter(s => !!s);
 }
 
-function evalHalfpoints(history) {
-  return patterns.map(pattern => {
+function evalHalfpoints(history, attempts = 0) {
+  if (attempts > 2) return [];
+  attempts += 1;
+  const streaks = patterns.map(({ id, pattern }) => {
     return Object.entries(numbers['1/2']).map(([typeDefinition, types]) => {
       return Object.entries(types).map(([type, n]) => {
         const { streak, patternIndex } = matchPatterns(pattern, n, history);
         return {
           type: typeDefinition,
+          patternId: id,
           pattern: pattern.split('').map(p => p === 'A' ? type : typeDefinition.split('_').filter(t => t !== type)[0]),
           nextInPatternIndex: patternIndex,
           streak
         };
-      }).filter(({ streak }) => streak >= STREAK_THRESHOLD_HALF)
+      }).filter(({ streak }) => streak > 3)
     }).filter(s => s.length > 0).flat();
   }).filter(s => s.length > 0).flat();
+  if (streaks.length === 0) {
+    history.shift();
+    return evalHalfpoints(history, attempts);
+  }
+  return streaks;
 }
 
 function matchPatterns(pattern, n, history) {
