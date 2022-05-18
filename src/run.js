@@ -46,6 +46,7 @@ const clickLocation = {
   top: { x: 960, y: 420 }
 };
 
+// TODO implement staleTimer
 let staleTimer = setInterval(async () => {
   console.log('RESET')
 }, 1000 * 60);
