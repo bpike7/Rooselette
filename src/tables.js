@@ -2,7 +2,7 @@ import puppeteer from 'puppeteer';
 import redis from './modules/redis.js';
 import tesseract from 'node-tesseract-ocr';
 
-const { BOVADA_EMAIL, BOVADA_PASSWORD } = process.env;
+const { SHOW_BROWSER, BOVADA_EMAIL, BOVADA_PASSWORD } = process.env;
 
 export const session = {
   browser: null,
@@ -10,17 +10,16 @@ export const session = {
     tablesIndex: null,
     table: null
   }
-}
+};
 
 export async function initialize() {
-  await redis.set('history_colors', []);
   await login();
   await openNewTablePage();
-  await redis.set('is_betting', false);
+  await redis.set('bets_active', []);
 }
 
 export async function login() {
-  session.browser = await puppeteer.launch({ headless: false, devtools: false });
+  session.browser = await puppeteer.launch({ headless: SHOW_BROWSER === 'false', devtools: false });
   session.browser.on('targetcreated', assignTablePage);
   session.pages.tablesIndex = await session.browser.newPage();
   const { tablesIndex: page } = session.pages;
@@ -50,7 +49,7 @@ export async function openNewTablePage() {
 }
 
 export async function getTableStatus() {
-  if (!session.pages.table) return 'inactive';
+  if (!session.pages.table) return 'not_found';
   const buffer = await session.pages.table.screenshot({
     type: 'jpeg',
     quality: 100,
@@ -58,7 +57,9 @@ export async function getTableStatus() {
     omitBackground: true,
   });
   const status = (await tesseract.recognize(buffer, { lang: "eng", oem: 1, psm: 7 })).replace('\n', '').toLowerCase();
-  if (status.includes('place')) return 'open';
+  if (status.includes('place') || status.includes('last')) return 'open';
+  else if (status.includes('progress')) return 'closed';
+  else if (!status.includes(['red', 'black', 'green', '0'])) return 'stale';
   else return 'closed';
 }
 
@@ -70,7 +71,7 @@ export async function getBalance() {
     omitBackground: true,
   });
   const balance = (await tesseract.recognize(buffer, { lang: "eng", oem: 1, psm: 7 })).replace('\n', '').replace(/,/g, '').replace('$', '');
-  return balance;
+  return parseFloat(balance);
 }
 
 

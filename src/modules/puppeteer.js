@@ -5,13 +5,6 @@ import redis from './redis.js';
 import Big from 'big.js';
 import { addToLedger } from '../ledger.js';
 
-// bottom x: 400, y: 420
-// even x: 515, y: 420
-// red  x: 650, y: 420
-// black x: 750, y: 420
-// odd x: 850, y: 420
-// top x: 950, y: 420
-
 const { BOVADA_EMAIL, BOVADA_PASSWORD } = process.env;
 
 export const session = {

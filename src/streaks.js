@@ -1,17 +1,17 @@
 const numbers = {
   '1/2': {
     red_black: {
-      red: [1, 3, 5, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36],
-      black: [2, 4, 6, 7, 8, 10, 11, 13, 15, 17, 20, 22, 24, 26, 28, 29, 31, 33, 35]
+      red: [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36],
+      black: [2, 4, 6, 8, 10, 11, 13, 15, 17, 20, 22, 24, 26, 28, 29, 31, 33, 35]
     },
-    // even_odd: {
-    //   even: [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36],
-    //   odd: [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35]
-    // },
-    // top_bottom: {
-    //   top: [19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 31, 32, 33, 34, 35, 36],
-    //   bottom: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
-    // },
+    even_odd: {
+      even: [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36],
+      odd: [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35]
+    },
+    top_bottom: {
+      top: [19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36],
+      bottom: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
+    },
   },
   // '1/3': {
   //   small_medium_big: {
@@ -30,19 +30,17 @@ const numbers = {
 const patterns = [
   { id: 'SINGLE', pattern: 'A' },
   { id: 'ALTERNATING', pattern: 'AB' },
-  { id: 'THIRD_WHEEL', pattern: 'AAB' },
-  // 'BAA',
-
-  // 'AAAB',
-  // 'AABB',
-  // 'AAABBB',
+  // { id: 'THIRD_WHEEL', pattern: 'AAB' },
+  // { id: 'TRIPS_ONE_OUT', pattern: 'AAAB' },
+  // { id: 'DOUBLE_DATE', pattern: 'AABB' },
 ];
 
 
 export default function (history) {
-  history.reverse()
-  const halfPoints = evalHalfpoints(history);
-  return [halfPoints.filter(s => !!s).sort((a, b) => a.streak < b.streak ? -1 : 1)[0]].filter(s => !!s);
+  const immutableHistory = [...history];
+  immutableHistory.reverse()
+  const halfPoints = evalHalfpoints(immutableHistory);
+  return halfPoints.filter(s => !!s).sort((a, b) => a.streak < b.streak ? -1 : 1)
 }
 
 function evalHalfpoints(history, attempts = 0) {
@@ -59,7 +57,7 @@ function evalHalfpoints(history, attempts = 0) {
           nextInPatternIndex: patternIndex,
           streak
         };
-      }).filter(({ streak }) => streak > 3)
+      }).filter(({ streak, pattern }) => streak >= pattern.length * 2 + 1)
     }).filter(s => s.length > 0).flat();
   }).filter(s => s.length > 0).flat();
   if (streaks.length === 0) {
